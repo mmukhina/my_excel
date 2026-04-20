@@ -2,16 +2,15 @@
 #include <QLineEdit>
 #include <QPainter>
 #include <QJSEngine>
-#include <QQmlEngine>
-#include <QApplication>
+#include <QRegularExpression>
+#include <algorithm>
+#include <QAbstractItemModel>
 
-// Constructor
 Delegate::Delegate(QObject *parent)
     : QStyledItemDelegate(parent)
 {
 }
 
-// Paint method implementation
 void Delegate::paint(QPainter *painter,
                      const QStyleOptionViewItem &option,
                      const QModelIndex &index) const
@@ -28,14 +27,12 @@ void Delegate::paint(QPainter *painter,
         painter->fillRect(option.rect, QColor(200, 220, 255));
         painter->setPen(Qt::darkBlue);
     }
-    else {
-        if (option.state & QStyle::State_Selected) {
-            painter->fillRect(option.rect, option.palette.highlight());
-            painter->setPen(option.palette.highlightedText().color());
-        } else {
-            painter->fillRect(option.rect, option.palette.base());
-            painter->setPen(option.palette.text().color());
-        }
+    else if (option.state & QStyle::State_Selected) {
+        painter->fillRect(option.rect, option.palette.highlight());
+        painter->setPen(option.palette.highlightedText().color());
+    } else {
+        painter->fillRect(option.rect, option.palette.base());
+        painter->setPen(option.palette.text().color());
     }
 
     painter->drawText(option.rect.adjusted(5, 0, -5, 0),
@@ -50,7 +47,6 @@ void Delegate::paint(QPainter *painter,
     painter->restore();
 }
 
-// createEditor implementation
 QWidget* Delegate::createEditor(QWidget *parent,
                                 const QStyleOptionViewItem &option,
                                 const QModelIndex &index) const
@@ -69,7 +65,6 @@ QWidget* Delegate::createEditor(QWidget *parent,
     return editor;
 }
 
-// setEditorData implementation
 void Delegate::setEditorData(QWidget *editor, const QModelIndex &index) const
 {
     QLineEdit *lineEdit = qobject_cast<QLineEdit*>(editor);
@@ -84,7 +79,6 @@ void Delegate::setEditorData(QWidget *editor, const QModelIndex &index) const
     }
 }
 
-// setModelData implementation
 void Delegate::setModelData(QWidget *editor, QAbstractItemModel *model,
                             const QModelIndex &index) const
 {
@@ -96,18 +90,43 @@ void Delegate::setModelData(QWidget *editor, QAbstractItemModel *model,
 
     if (text.startsWith('=')) {
         m_formulas[key] = text;
-        QString result = evaluateFormula(text.mid(1));
+        QString result = evaluateFormula(text.mid(1), model, index);
         model->setData(index, result);
     } else {
         m_formulas.remove(key);
         model->setData(index, text);
     }
+
+    // После изменения ячейки обновляем все формулы
+    updateAllFormulas(model);
 }
 
-// Helper method implementations
+void Delegate::updateAllFormulas(QAbstractItemModel *model) const
+{
+    // Перебираем все сохраненные формулы
+    for (auto it = m_formulas.begin(); it != m_formulas.end(); ++it) {
+        QString key = it.key();
+        QString formula = it.value();
+
+        // Разбираем ключ "row:column"
+        QStringList parts = key.split(':');
+        if (parts.size() == 2) {
+            int row = parts[0].toInt();
+            int col = parts[1].toInt();
+
+            if (row < model->rowCount() && col < model->columnCount()) {
+                QModelIndex idx = model->index(row, col);
+                // Пересчитываем формулу
+                QString result = evaluateFormula(formula.mid(1), model, idx);
+                model->setData(idx, result);
+            }
+        }
+    }
+}
+
 bool Delegate::isError(const QString &text) const
 {
-    return text.contains("error", Qt::CaseInsensitive);
+    return text.contains("ERROR", Qt::CaseInsensitive) || text.contains("ОШИБКА");
 }
 
 bool Delegate::hasFormula(const QModelIndex &index) const
@@ -116,27 +135,197 @@ bool Delegate::hasFormula(const QModelIndex &index) const
     return m_formulas.contains(key);
 }
 
-// evaluateFormula implementation
-QString Delegate::evaluateFormula(const QString &formula) const
+QString Delegate::evaluateFormula(const QString &formula, const QAbstractItemModel *model, const QModelIndex &currentIndex) const
 {
+    QString expr = formula.trimmed().toUpper();
+
+    // Проверка на функции с диапазоном
+    QRegularExpression funcRegex("^(SUM|AVERAGE|MEDIAN|TOLOWER|TOUPPER)\\(([A-Z]+[0-9]+:[A-Z]+[0-9]+)\\)$");
+    QRegularExpressionMatch match = funcRegex.match(expr);
+
+    if (match.hasMatch()) {
+        QString func = match.captured(1);
+        QString range = match.captured(2);
+
+        if (func == "SUM") return QString::number(sumRange(range, model, currentIndex));
+        if (func == "AVERAGE") return QString::number(averageRange(range, model, currentIndex));
+        if (func == "MEDIAN") return QString::number(medianRange(range, model, currentIndex));
+        if (func == "TOLOWER") return toLowerRange(range, model, currentIndex);
+        if (func == "TOUPPER") return toUpperRange(range, model, currentIndex);
+    }
+
+    // Замена ссылок на ячейки их значениями
+    QRegularExpression cellRegex("([A-Z]+)([0-9]+)");
+    QRegularExpressionMatchIterator it = cellRegex.globalMatch(expr);
+    QMap<QString, QString> replacements;
+
+    while (it.hasNext()) {
+        QRegularExpressionMatch cellMatch = it.next();
+        QString colStr = cellMatch.captured(1);
+        QString rowStr = cellMatch.captured(2);
+
+        // Конвертируем букву столбца в число
+        int col = 0;
+        for (int i = 0; i < colStr.length(); ++i) {
+            col = col * 26 + (colStr[i].toLatin1() - 'A' + 1);
+        }
+        col--;
+        int row = rowStr.toInt() - 1;
+
+        // Получаем значение ячейки
+        QVariant value = getCellValue(row, col, model);
+        QString replacement;
+
+        if (value.isValid() && isNumeric(value.toString())) {
+            replacement = value.toString();
+        } else if (value.isValid()) {
+            replacement = "\"" + value.toString() + "\"";
+        } else {
+            replacement = "0";
+        }
+
+        replacements[cellMatch.captured(0)] = replacement;
+    }
+
+    // Выполняем замены
+    for (auto it = replacements.begin(); it != replacements.end(); ++it) {
+        expr.replace(it.key(), it.value());
+    }
+
+    // Вычисляем выражение
     QJSEngine engine;
-    QJSValue result = engine.evaluate(formula);
+    QJSValue result = engine.evaluate(expr);
 
     if (result.isError()) {
-        return "ERROR: " + result.toString();
+        return "ERROR";
     }
 
     if (result.isNumber()) {
-        double value = result.toNumber();
-        if (qFuzzyCompare(value + 1.0, qRound(value) + 1.0)) {
-            return QString::number(qRound(value));
+        double val = result.toNumber();
+        if (val == int(val)) {
+            return QString::number(int(val));
         }
-        return QString::number(value, 'g', 10);
-    }
-
-    if (result.isString()) {
-        return result.toString();
+        return QString::number(val);
     }
 
     return result.toString();
+}
+
+double Delegate::sumRange(const QString &range, const QAbstractItemModel *model, const QModelIndex &currentIndex) const
+{
+    QStringList values = getRangeValues(range, model);
+    double sum = 0;
+    for (const QString &v : values) {
+        if (isNumeric(v)) sum += v.toDouble();
+    }
+    return sum;
+}
+
+double Delegate::averageRange(const QString &range, const QAbstractItemModel *model, const QModelIndex &currentIndex) const
+{
+    QStringList values = getRangeValues(range, model);
+    double sum = 0;
+    int count = 0;
+    for (const QString &v : values) {
+        if (isNumeric(v)) {
+            sum += v.toDouble();
+            count++;
+        }
+    }
+    return count > 0 ? sum / count : 0;
+}
+
+double Delegate::medianRange(const QString &range, const QAbstractItemModel *model, const QModelIndex &currentIndex) const
+{
+    QStringList values = getRangeValues(range, model);
+    QVector<double> nums;
+    for (const QString &v : values) {
+        if (isNumeric(v)) nums.append(v.toDouble());
+    }
+    if (nums.isEmpty()) return 0;
+    std::sort(nums.begin(), nums.end());
+    int size = nums.size();
+    if (size % 2 == 0) {
+        return (nums[size/2 - 1] + nums[size/2]) / 2.0;
+    } else {
+        return nums[size/2];
+    }
+}
+
+QString Delegate::toLowerRange(const QString &range, const QAbstractItemModel *model, const QModelIndex &currentIndex) const
+{
+    QStringList values = getRangeValues(range, model);
+    QStringList result;
+    for (const QString &v : values) {
+        result.append(v.toLower());
+    }
+    return result.join(" ");
+}
+
+QString Delegate::toUpperRange(const QString &range, const QAbstractItemModel *model, const QModelIndex &currentIndex) const
+{
+    QStringList values = getRangeValues(range, model);
+    QStringList result;
+    for (const QString &v : values) {
+        result.append(v.toUpper());
+    }
+    return result.join(" ");
+}
+
+QStringList Delegate::getRangeValues(const QString &range, const QAbstractItemModel *model) const
+{
+    QStringList values;
+    QRegularExpression regex("^([A-Z]+)([0-9]+):([A-Z]+)([0-9]+)$");
+    QRegularExpressionMatch match = regex.match(range);
+
+    if (!match.hasMatch()) return values;
+
+    // Получаем координаты
+    QString startColStr = match.captured(1);
+    int startRow = match.captured(2).toInt() - 1;
+    QString endColStr = match.captured(3);
+    int endRow = match.captured(4).toInt() - 1;
+
+    // Конвертируем буквы в числа
+    int startCol = 0, endCol = 0;
+    for (int i = 0; i < startColStr.length(); ++i) {
+        startCol = startCol * 26 + (startColStr[i].toLatin1() - 'A' + 1);
+    }
+    startCol--;
+
+    for (int i = 0; i < endColStr.length(); ++i) {
+        endCol = endCol * 26 + (endColStr[i].toLatin1() - 'A' + 1);
+    }
+    endCol--;
+
+    // Собираем значения
+    for (int row = qMin(startRow, endRow); row <= qMax(startRow, endRow); ++row) {
+        for (int col = qMin(startCol, endCol); col <= qMax(startCol, endCol); ++col) {
+            QVariant value = getCellValue(row, col, model);
+            if (value.isValid()) {
+                values.append(value.toString());
+            } else {
+                values.append("");
+            }
+        }
+    }
+
+    return values;
+}
+
+QVariant Delegate::getCellValue(int row, int col, const QAbstractItemModel *model) const
+{
+    if (row >= 0 && col >= 0 && row < model->rowCount() && col < model->columnCount()) {
+        QModelIndex cellIndex = model->index(row, col);
+        return cellIndex.data();
+    }
+    return QVariant();
+}
+
+bool Delegate::isNumeric(const QString &str) const
+{
+    if (str.isEmpty()) return false;
+    bool ok;
+    str.toDouble(&ok);
+    return ok;
 }

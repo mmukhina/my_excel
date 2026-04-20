@@ -16,10 +16,26 @@ public:
     ~MainWindow();
 
 private slots:
-    void on_tableWidget_cellChanged(int row, int column);
+    void on_actionNew_triggered();
+    void on_actionOpenCSV_triggered();
+    void on_actionOpenJSON_triggered();
+    void on_actionSaveAsCSV_triggered();
+    void on_actionSaveAsJSON_triggered();
+    void on_actionExit_triggered();
+    void on_actionAddRow_triggered();
+    void on_actionDeleteRow_triggered();
+    void on_actionAddColumn_triggered();
+    void on_actionDeleteColumn_triggered();
+    void on_actionClearTable_triggered();
 
 private:
     Ui::MainWindow *ui;
+
+    void loadCSV(const QString& filename);
+    void loadJSON(const QString& filename);
+    void saveCSV(const QString& filename);
+    void saveJSON(const QString& filename);
+    void clearTable();
 };
 
 #endif

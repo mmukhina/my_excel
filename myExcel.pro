@@ -8,11 +8,11 @@ TEMPLATE = app
 SOURCES += \
     main.cpp \
     mainwindow.cpp \
-    delegate.cpp          # MAKE SURE THIS LINE EXISTS!
+    delegate.cpp
 
 HEADERS += \
     mainwindow.h \
-    delegate.h            # MAKE SURE THIS LINE EXISTS!
+    delegate.h
 
 FORMS += \
     mainwindow.ui

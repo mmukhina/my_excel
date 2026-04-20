@@ -39,17 +39,43 @@ template <> constexpr inline auto MainWindow::qt_create_metaobjectdata<qt_meta_t
     namespace QMC = QtMocConstants;
     QtMocHelpers::StringRefStorage qt_stringData {
         "MainWindow",
-        "on_tableWidget_cellChanged",
+        "on_actionNew_triggered",
         "",
-        "row",
-        "column"
+        "on_actionOpenCSV_triggered",
+        "on_actionOpenJSON_triggered",
+        "on_actionSaveAsCSV_triggered",
+        "on_actionSaveAsJSON_triggered",
+        "on_actionExit_triggered",
+        "on_actionAddRow_triggered",
+        "on_actionDeleteRow_triggered",
+        "on_actionAddColumn_triggered",
+        "on_actionDeleteColumn_triggered",
+        "on_actionClearTable_triggered"
     };
 
     QtMocHelpers::UintData qt_methods {
-        // Slot 'on_tableWidget_cellChanged'
-        QtMocHelpers::SlotData<void(int, int)>(1, 2, QMC::AccessPrivate, QMetaType::Void, {{
-            { QMetaType::Int, 3 }, { QMetaType::Int, 4 },
-        }}),
+        // Slot 'on_actionNew_triggered'
+        QtMocHelpers::SlotData<void()>(1, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'on_actionOpenCSV_triggered'
+        QtMocHelpers::SlotData<void()>(3, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'on_actionOpenJSON_triggered'
+        QtMocHelpers::SlotData<void()>(4, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'on_actionSaveAsCSV_triggered'
+        QtMocHelpers::SlotData<void()>(5, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'on_actionSaveAsJSON_triggered'
+        QtMocHelpers::SlotData<void()>(6, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'on_actionExit_triggered'
+        QtMocHelpers::SlotData<void()>(7, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'on_actionAddRow_triggered'
+        QtMocHelpers::SlotData<void()>(8, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'on_actionDeleteRow_triggered'
+        QtMocHelpers::SlotData<void()>(9, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'on_actionAddColumn_triggered'
+        QtMocHelpers::SlotData<void()>(10, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'on_actionDeleteColumn_triggered'
+        QtMocHelpers::SlotData<void()>(11, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'on_actionClearTable_triggered'
+        QtMocHelpers::SlotData<void()>(12, 2, QMC::AccessPrivate, QMetaType::Void),
     };
     QtMocHelpers::UintData qt_properties {
     };
@@ -73,10 +99,21 @@ void MainWindow::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, 
     auto *_t = static_cast<MainWindow *>(_o);
     if (_c == QMetaObject::InvokeMetaMethod) {
         switch (_id) {
-        case 0: _t->on_tableWidget_cellChanged((*reinterpret_cast<std::add_pointer_t<int>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<int>>(_a[2]))); break;
+        case 0: _t->on_actionNew_triggered(); break;
+        case 1: _t->on_actionOpenCSV_triggered(); break;
+        case 2: _t->on_actionOpenJSON_triggered(); break;
+        case 3: _t->on_actionSaveAsCSV_triggered(); break;
+        case 4: _t->on_actionSaveAsJSON_triggered(); break;
+        case 5: _t->on_actionExit_triggered(); break;
+        case 6: _t->on_actionAddRow_triggered(); break;
+        case 7: _t->on_actionDeleteRow_triggered(); break;
+        case 8: _t->on_actionAddColumn_triggered(); break;
+        case 9: _t->on_actionDeleteColumn_triggered(); break;
+        case 10: _t->on_actionClearTable_triggered(); break;
         default: ;
         }
     }
+    (void)_a;
 }
 
 const QMetaObject *MainWindow::metaObject() const
@@ -98,14 +135,14 @@ int MainWindow::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 1)
+        if (_id < 11)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 1;
+        _id -= 11;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 1)
+        if (_id < 11)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 1;
+        _id -= 11;
     }
     return _id;
 }

@@ -19,26 +19,33 @@ void Delegate::paint(QPainter *painter,
 
     painter->save();
 
+    // Определяем цвет фона в зависимости от состояния ячейки
     if (isError(text)) {
+        // Ошибка - красный фон
         painter->fillRect(option.rect, QColor(255, 200, 200));
         painter->setPen(Qt::red);
     }
     else if (hasFormula(index)) {
+        // Формула - синий фон
         painter->fillRect(option.rect, QColor(200, 220, 255));
         painter->setPen(Qt::darkBlue);
     }
     else if (option.state & QStyle::State_Selected) {
+        // Выделенная ячейка - цвет выделения
         painter->fillRect(option.rect, option.palette.highlight());
         painter->setPen(option.palette.highlightedText().color());
     } else {
+        // Обычная ячейка - стандартный фон
         painter->fillRect(option.rect, option.palette.base());
         painter->setPen(option.palette.text().color());
     }
 
+    // Рисуем текст с отступом
     painter->drawText(option.rect.adjusted(5, 0, -5, 0),
                       Qt::AlignLeft | Qt::AlignVCenter,
                       text);
 
+    // Если ячейка содержит формулу, рисуем синюю рамку
     if (hasFormula(index)) {
         painter->setPen(QColor(100, 150, 255));
         painter->drawRect(option.rect.adjusted(0, 0, -1, -1));
@@ -55,10 +62,13 @@ QWidget* Delegate::createEditor(QWidget *parent,
 
     QLineEdit *editor = new QLineEdit(parent);
 
+    // Создаем ключ для поиска формулы в хранилище
     QString key = QString("%1:%2").arg(index.row()).arg(index.column());
     if (m_formulas.contains(key)) {
+        // Если есть сохраненная формула, отображаем её
         editor->setText(m_formulas[key]);
     } else {
+        // Иначе отображаем значение ячейки
         editor->setText(index.data().toString());
     }
 
@@ -88,23 +98,28 @@ void Delegate::setModelData(QWidget *editor, QAbstractItemModel *model,
     QString text = lineEdit->text();
     QString key = QString("%1:%2").arg(index.row()).arg(index.column());
 
+    // Проверяем, является ли введенный текст формулой (начинается с '=')
     if (text.startsWith('=')) {
+        // Сохраняем формулу
         m_formulas[key] = text;
+        // Вычисляем результат формулы
         QString result = evaluateFormula(text.mid(1), model, index);
         model->setData(index, result);
     } else {
+        // Обычное значение - удаляем формулу, если она была
         m_formulas.remove(key);
         model->setData(index, text);
     }
 
-    // После изменения ячейки обновляем все формулы
+    // После изменения ячейки обновляем все формулы, которые могут зависеть от этой ячейки
     updateAllFormulas(model);
 }
 
 void Delegate::updateAllFormulas(QAbstractItemModel *model) const
 {
     // Перебираем все сохраненные формулы
-    for (auto it = m_formulas.begin(); it != m_formulas.end(); ++it) {
+    QMap<QString, QString>::const_iterator it;
+    for (it = m_formulas.begin(); it != m_formulas.end(); ++it) {
         QString key = it.key();
         QString formula = it.value();
 
@@ -114,9 +129,10 @@ void Delegate::updateAllFormulas(QAbstractItemModel *model) const
             int row = parts[0].toInt();
             int col = parts[1].toInt();
 
+            // Проверяем, что индексы в пределах таблицы
             if (row < model->rowCount() && col < model->columnCount()) {
                 QModelIndex idx = model->index(row, col);
-                // Пересчитываем формулу
+                // Пересчитываем формулу (убираем знак '=')
                 QString result = evaluateFormula(formula.mid(1), model, idx);
                 model->setData(idx, result);
             }
@@ -141,7 +157,7 @@ QString Delegate::evaluateFormula(const QString &formula, const QAbstractItemMod
 
     QString expr = formula.trimmed().toUpper();
 
-    // Проверка на функции с диапазоном
+    // Проверка на функции с диапазоном (SUM, AVERAGE, MEDIAN)
     QRegularExpression funcRegex("^(SUM|AVERAGE|MEDIAN)\\(([A-Z]+[0-9]+:[A-Z]+[0-9]+)\\)$");
     QRegularExpressionMatch match = funcRegex.match(expr);
 
@@ -154,7 +170,7 @@ QString Delegate::evaluateFormula(const QString &formula, const QAbstractItemMod
         if (func == "MEDIAN") return QString::number(medianRange(range, model));
     }
 
-    // Проверка на функции с одной ячейкой TOLOWER и TOUPPER
+    // Проверка на функции с одной ячейкой (TOLOWER, TOUPPER)
     QRegularExpression singleFuncRegex("^(TOLOWER|TOUPPER)\\(([A-Z]+[0-9]+)\\)$");
     QRegularExpressionMatch singleMatch = singleFuncRegex.match(expr);
 
@@ -192,11 +208,11 @@ QString Delegate::evaluateFormula(const QString &formula, const QAbstractItemMod
 
     // Замена ссылок на ячейки их значениями
     QRegularExpression cellRegex("([A-Z]+)([0-9]+)");
-    QRegularExpressionMatchIterator it = cellRegex.globalMatch(expr);
+    QRegularExpressionMatchIterator regexIterator = cellRegex.globalMatch(expr);
     QMap<QString, QString> replacements;
 
-    while (it.hasNext()) {
-        QRegularExpressionMatch cellMatch = it.next();
+    while (regexIterator.hasNext()) {
+        QRegularExpressionMatch cellMatch = regexIterator.next();
         QString colStr = cellMatch.captured(1);
         QString rowStr = cellMatch.captured(2);
 
@@ -224,11 +240,12 @@ QString Delegate::evaluateFormula(const QString &formula, const QAbstractItemMod
     }
 
     // Выполняем замены
-    for (auto it = replacements.begin(); it != replacements.end(); ++it) {
-        expr.replace(it.key(), it.value());
+    QMap<QString, QString>::const_iterator replacementIt;
+    for (replacementIt = replacements.begin(); replacementIt != replacements.end(); ++replacementIt) {
+        expr.replace(replacementIt.key(), replacementIt.value());
     }
 
-    // Вычисляем выражение
+    // Вычисляем выражение с помощью JavaScript engine
     QJSEngine engine;
     QJSValue result = engine.evaluate(expr);
 
@@ -238,8 +255,9 @@ QString Delegate::evaluateFormula(const QString &formula, const QAbstractItemMod
 
     if (result.isNumber()) {
         double val = result.toNumber();
-        if (val == int(val)) {
-            return QString::number(int(val));
+        // Если число целое, выводим без десятичной части
+        if (val == static_cast<int>(val)) {
+            return QString::number(static_cast<int>(val));
         }
         return QString::number(val);
     }
@@ -251,7 +269,8 @@ double Delegate::sumRange(const QString &range, const QAbstractItemModel *model)
 {
     QStringList values = getRangeValues(range, model);
     double sum = 0;
-    for (const QString &v : values) {
+    for (int i = 0; i < values.size(); ++i) {
+        const QString &v = values[i];
         if (isNumeric(v)) sum += v.toDouble();
     }
     return sum;
@@ -262,7 +281,8 @@ double Delegate::averageRange(const QString &range, const QAbstractItemModel *mo
     QStringList values = getRangeValues(range, model);
     double sum = 0;
     int count = 0;
-    for (const QString &v : values) {
+    for (int i = 0; i < values.size(); ++i) {
+        const QString &v = values[i];
         if (isNumeric(v)) {
             sum += v.toDouble();
             count++;
@@ -275,7 +295,8 @@ double Delegate::medianRange(const QString &range, const QAbstractItemModel *mod
 {
     QStringList values = getRangeValues(range, model);
     QVector<double> nums;
-    for (const QString &v : values) {
+    for (int i = 0; i < values.size(); ++i) {
+        const QString &v = values[i];
         if (isNumeric(v)) nums.append(v.toDouble());
     }
     if (nums.isEmpty()) return 0;
@@ -314,7 +335,7 @@ QStringList Delegate::getRangeValues(const QString &range, const QAbstractItemMo
     }
     endCol--;
 
-    // Собираем значения
+    // Собираем значения из диапазона
     for (int row = qMin(startRow, endRow); row <= qMax(startRow, endRow); ++row) {
         for (int col = qMin(startCol, endCol); col <= qMax(startCol, endCol); ++col) {
             QVariant value = getCellValue(row, col, model);

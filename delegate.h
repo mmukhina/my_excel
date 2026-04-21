@@ -32,11 +32,9 @@ private:
     bool isError(const QString &text) const;
     bool hasFormula(const QModelIndex &index) const;
 
-    double sumRange(const QString &range, const QAbstractItemModel *model, const QModelIndex &currentIndex) const;
-    double averageRange(const QString &range, const QAbstractItemModel *model, const QModelIndex &currentIndex) const;
-    double medianRange(const QString &range, const QAbstractItemModel *model, const QModelIndex &currentIndex) const;
-    QString toLowerRange(const QString &range, const QAbstractItemModel *model, const QModelIndex &currentIndex) const;
-    QString toUpperRange(const QString &range, const QAbstractItemModel *model, const QModelIndex &currentIndex) const;
+    double sumRange(const QString &range, const QAbstractItemModel *model) const;
+    double averageRange(const QString &range, const QAbstractItemModel *model) const;
+    double medianRange(const QString &range, const QAbstractItemModel *model) const;
 
     QStringList getRangeValues(const QString &range, const QAbstractItemModel *model) const;
     QVariant getCellValue(int row, int col, const QAbstractItemModel *model) const;

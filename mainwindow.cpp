@@ -9,7 +9,12 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
-#include <QDebug>
+#include <QDialog>
+#include <QScrollArea>
+#include <QLabel>
+#include <QPushButton>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -17,10 +22,37 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    // Make window resizable
+    setMinimumSize(400, 300);
+
+    // Set table properties for better scrolling
+    ui->tableWidget->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    ui->tableWidget->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    ui->tableWidget->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
+    ui->tableWidget->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+
+    // Generate column headers A, B, C, ... Z
+    for (int col = 0; col < ui->tableWidget->columnCount(); ++col) {
+        QString header;
+        if (col < 26) {
+            header = QString(QChar('A' + col));
+        } else {
+            int first = (col / 26) - 1;
+            int second = col % 26;
+            header = QString(QChar('A' + first)) + QString(QChar('A' + second));
+        }
+        ui->tableWidget->setHorizontalHeaderItem(col, new QTableWidgetItem(header));
+    }
+
+    // Set row headers (1, 2, 3, ...)
+    for (int row = 0; row < ui->tableWidget->rowCount(); ++row) {
+        ui->tableWidget->setVerticalHeaderItem(row, new QTableWidgetItem(QString::number(row + 1)));
+    }
+
     Delegate *delegate = new Delegate(this);
     ui->tableWidget->setItemDelegate(delegate);
 
-    // Подключаем сигнал изменения ячейки для обновления формул
+    // Connect the signal for updating formulas
     connect(ui->tableWidget, &QTableWidget::cellChanged, this, [this](int row, int column) {
         Q_UNUSED(row);
         Q_UNUSED(column);
@@ -29,8 +61,6 @@ MainWindow::MainWindow(QWidget *parent)
             del->updateAllFormulas(ui->tableWidget->model());
         }
     });
-
-    ui->statusbar->showMessage("Готово. Введите формулу: =SUM(A1:A10) или =A1+B2");
 }
 
 MainWindow::~MainWindow()
@@ -40,16 +70,13 @@ MainWindow::~MainWindow()
 
 void MainWindow::on_actionNew_triggered()
 {
-    qDebug() << "New triggered";
     clearTable();
     ui->statusbar->showMessage("Создана новая таблица");
 }
 
 void MainWindow::on_actionOpenCSV_triggered()
 {
-    qDebug() << "Open CSV triggered";
     QString filename = QFileDialog::getOpenFileName(this, "Открыть CSV файл", "", "CSV files (*.csv)");
-    qDebug() << "Selected file:" << filename;
     if (!filename.isEmpty()) {
         loadCSV(filename);
     }
@@ -57,9 +84,7 @@ void MainWindow::on_actionOpenCSV_triggered()
 
 void MainWindow::on_actionOpenJSON_triggered()
 {
-    qDebug() << "Open JSON triggered";
     QString filename = QFileDialog::getOpenFileName(this, "Открыть JSON файл", "", "JSON files (*.json)");
-    qDebug() << "Selected file:" << filename;
     if (!filename.isEmpty()) {
         loadJSON(filename);
     }
@@ -67,9 +92,7 @@ void MainWindow::on_actionOpenJSON_triggered()
 
 void MainWindow::on_actionSaveAsCSV_triggered()
 {
-    qDebug() << "Save CSV triggered";
     QString filename = QFileDialog::getSaveFileName(this, "Сохранить как CSV", "", "CSV files (*.csv)");
-    qDebug() << "Save to file:" << filename;
     if (!filename.isEmpty()) {
         saveCSV(filename);
     }
@@ -77,9 +100,7 @@ void MainWindow::on_actionSaveAsCSV_triggered()
 
 void MainWindow::on_actionSaveAsJSON_triggered()
 {
-    qDebug() << "Save JSON triggered";
     QString filename = QFileDialog::getSaveFileName(this, "Сохранить как JSON", "", "JSON files (*.json)");
-    qDebug() << "Save to file:" << filename;
     if (!filename.isEmpty()) {
         saveJSON(filename);
     }
@@ -87,21 +108,111 @@ void MainWindow::on_actionSaveAsJSON_triggered()
 
 void MainWindow::on_actionExit_triggered()
 {
-    qDebug() << "Exit triggered";
     close();
 }
+
+
 
 void MainWindow::on_actionAddRow_triggered()
 {
     int currentRow = ui->tableWidget->currentRow();
 
     if (currentRow >= 0) {
+        // Сохраняем все данные и формулы ВСЕЙ таблицы
+        QMap<QString, QString> allData;
+        QMap<QString, QString> allFormulas;
+
+        Delegate *del = qobject_cast<Delegate*>(ui->tableWidget->itemDelegate());
+
+        // Сохраняем все данные таблицы
+        for (int row = 0; row < ui->tableWidget->rowCount(); ++row) {
+            for (int col = 0; col < ui->tableWidget->columnCount(); ++col) {
+                QTableWidgetItem* item = ui->tableWidget->item(row, col);
+                if (item) {
+                    QString key = QString("%1:%2").arg(row).arg(col);
+                    allData[key] = item->text();
+                }
+            }
+        }
+
+        // Сохраняем все формулы
+        if (del) {
+            allFormulas = del->m_formulas;
+        }
+
+        // Очищаем всю таблицу
+        ui->tableWidget->clearContents();
+
+        // Очищаем формулы
+        if (del) {
+            del->m_formulas.clear();
+        }
+
+        // Вставляем новую пустую строку
         ui->tableWidget->insertRow(currentRow);
-        ui->statusbar->showMessage("Добавлена строка " + QString::number(currentRow + 1));
+
+        // Восстанавливаем данные и формулы со сдвигом
+        for (auto it = allData.begin(); it != allData.end(); ++it) {
+            QString key = it.key();
+            QString value = it.value();
+
+            QStringList parts = key.split(':');
+            if (parts.size() == 2) {
+                int oldRow = parts[0].toInt();
+                int col = parts[1].toInt();
+
+                int newRow = oldRow;
+                if (oldRow >= currentRow) {
+                    newRow = oldRow + 1;
+                }
+
+                ui->tableWidget->setItem(newRow, col, new QTableWidgetItem(value));
+            }
+        }
+
+        // Восстанавливаем формулы со сдвигом ссылок
+        for (auto it = allFormulas.begin(); it != allFormulas.end(); ++it) {
+            QString key = it.key();
+            QString formula = it.value();
+
+            QStringList parts = key.split(':');
+            if (parts.size() == 2) {
+                int oldRow = parts[0].toInt();
+                int col = parts[1].toInt();
+
+                int newRow = oldRow;
+                if (oldRow >= currentRow) {
+                    newRow = oldRow + 1;
+                }
+
+                // Обновляем ссылки в формуле
+                QString updatedFormula = updateFormulaReferences(formula, currentRow, 1);
+
+                QString newKey = QString("%1:%2").arg(newRow).arg(col);
+                if (del) {
+                    del->m_formulas[newKey] = updatedFormula;
+                }
+            }
+        }
+
     } else {
-        int row = ui->tableWidget->rowCount();
-        ui->tableWidget->insertRow(row);
-        ui->statusbar->showMessage("Добавлена строка " + QString::number(row + 1));
+        // Добавляем пустую строку в конец
+        int newRow = ui->tableWidget->rowCount();
+        ui->tableWidget->insertRow(newRow);
+        for (int col = 0; col < ui->tableWidget->columnCount(); ++col) {
+            ui->tableWidget->setItem(newRow, col, new QTableWidgetItem(""));
+        }
+    }
+
+    // Обновляем заголовки строк
+    for (int row = 0; row < ui->tableWidget->rowCount(); ++row) {
+        ui->tableWidget->setVerticalHeaderItem(row, new QTableWidgetItem(QString::number(row + 1)));
+    }
+
+    // Обновляем все формулы
+    Delegate *del = qobject_cast<Delegate*>(ui->tableWidget->itemDelegate());
+    if (del) {
+        del->updateAllFormulas(ui->tableWidget->model());
     }
 }
 
@@ -118,8 +229,103 @@ void MainWindow::on_actionDeleteRow_triggered()
             );
 
         if (reply == QMessageBox::Yes) {
+            // Сохраняем все данные и формулы
+            QMap<QString, QString> allData;
+            QMap<QString, QString> allFormulas;
+
+            Delegate *del = qobject_cast<Delegate*>(ui->tableWidget->itemDelegate());
+
+            // Сохраняем все данные таблицы
+            for (int row = 0; row < ui->tableWidget->rowCount(); ++row) {
+                for (int col = 0; col < ui->tableWidget->columnCount(); ++col) {
+                    if (row == currentRow) continue; // Пропускаем удаляемую строку
+
+                    QTableWidgetItem* item = ui->tableWidget->item(row, col);
+                    if (item) {
+                        QString key = QString("%1:%2").arg(row).arg(col);
+                        allData[key] = item->text();
+                    }
+                }
+            }
+
+            // Сохраняем все формулы (кроме удаляемой строки)
+            if (del) {
+                for (auto it = del->m_formulas.begin(); it != del->m_formulas.end(); ++it) {
+                    QString key = it.key();
+                    QStringList parts = key.split(':');
+                    if (parts.size() == 2) {
+                        int row = parts[0].toInt();
+                        if (row != currentRow) {
+                            allFormulas[key] = it.value();
+                        }
+                    }
+                }
+            }
+
+            // Очищаем таблицу
+            ui->tableWidget->clearContents();
+
+            // Очищаем формулы
+            if (del) {
+                del->m_formulas.clear();
+            }
+
+            // Удаляем строку
             ui->tableWidget->removeRow(currentRow);
-            ui->statusbar->showMessage("Удалена строка " + QString::number(currentRow + 1));
+
+            // Восстанавливаем данные со сдвигом вверх
+            for (auto it = allData.begin(); it != allData.end(); ++it) {
+                QString key = it.key();
+                QString value = it.value();
+
+                QStringList parts = key.split(':');
+                if (parts.size() == 2) {
+                    int oldRow = parts[0].toInt();
+                    int col = parts[1].toInt();
+
+                    int newRow = oldRow;
+                    if (oldRow > currentRow) {
+                        newRow = oldRow - 1;
+                    }
+
+                    ui->tableWidget->setItem(newRow, col, new QTableWidgetItem(value));
+                }
+            }
+
+            // Восстанавливаем формулы со сдвигом ссылок
+            for (auto it = allFormulas.begin(); it != allFormulas.end(); ++it) {
+                QString key = it.key();
+                QString formula = it.value();
+
+                QStringList parts = key.split(':');
+                if (parts.size() == 2) {
+                    int oldRow = parts[0].toInt();
+                    int col = parts[1].toInt();
+
+                    int newRow = oldRow;
+                    if (oldRow > currentRow) {
+                        newRow = oldRow - 1;
+                    }
+
+                    // Обновляем ссылки в формуле (сдвиг вверх)
+                    QString updatedFormula = updateFormulaReferences(formula, currentRow, -1);
+
+                    QString newKey = QString("%1:%2").arg(newRow).arg(col);
+                    if (del) {
+                        del->m_formulas[newKey] = updatedFormula;
+                    }
+                }
+            }
+
+            // Обновляем заголовки строк
+            for (int row = 0; row < ui->tableWidget->rowCount(); ++row) {
+                ui->tableWidget->setVerticalHeaderItem(row, new QTableWidgetItem(QString::number(row + 1)));
+            }
+
+            // Обновляем все формулы
+            if (del) {
+                del->updateAllFormulas(ui->tableWidget->model());
+            }
         } else {
             ui->statusbar->showMessage("Удаление строки отменено");
         }
@@ -128,35 +334,148 @@ void MainWindow::on_actionDeleteRow_triggered()
     }
 }
 
+// Функция для обновления ссылок в формуле
+QString MainWindow::updateFormulaReferences(const QString &formula, int insertRow, int shift)
+{
+    QString result = formula;
+
+    // Регулярное выражение для поиска ссылок на ячейки (например, A1, B2, AA10)
+    QRegularExpression cellRegex("([A-Z]+)([0-9]+)");
+    QRegularExpressionMatchIterator it = cellRegex.globalMatch(formula);
+
+    QMap<QString, QString> replacements;
+
+    while (it.hasNext()) {
+        QRegularExpressionMatch match = it.next();
+        QString originalRef = match.captured(0);
+        QString colStr = match.captured(1);
+        QString rowStr = match.captured(2);
+
+        int row = rowStr.toInt() - 1; // Переводим в 0-индексацию
+
+        // Обновляем номер строки если нужно
+        if (row >= insertRow) {
+            int newRow = row + shift;
+            if (newRow >= 0) {
+                QString newRowStr = QString::number(newRow + 1);
+                QString newRef = colStr + newRowStr;
+                replacements[originalRef] = newRef;
+            }
+        }
+    }
+
+    // Выполняем замены
+    for (auto it = replacements.begin(); it != replacements.end(); ++it) {
+        result.replace(it.key(), it.value());
+    }
+
+    return result;
+}
+
 void MainWindow::on_actionAddColumn_triggered()
 {
     int currentCol = ui->tableWidget->currentColumn();
 
     if (currentCol >= 0) {
-        ui->tableWidget->insertColumn(currentCol + 1);
+        // Сохраняем все данные и формулы ВСЕЙ таблицы
+        QMap<QString, QString> allData;
+        QMap<QString, QString> allFormulas;
 
-        for (int col = currentCol + 1; col < ui->tableWidget->columnCount(); ++col) {
-            if (col < 26) {
-                ui->tableWidget->setHorizontalHeaderItem(col, new QTableWidgetItem(QString(QChar('A' + col))));
-            } else {
-                QString header = QString(QChar('A' + (col / 26) - 1)) + QString(QChar('A' + (col % 26)));
-                ui->tableWidget->setHorizontalHeaderItem(col, new QTableWidgetItem(header));
+        Delegate *del = qobject_cast<Delegate*>(ui->tableWidget->itemDelegate());
+
+        // Сохраняем все данные таблицы
+        for (int row = 0; row < ui->tableWidget->rowCount(); ++row) {
+            for (int col = 0; col < ui->tableWidget->columnCount(); ++col) {
+                QTableWidgetItem* item = ui->tableWidget->item(row, col);
+                if (item) {
+                    QString key = QString("%1:%2").arg(row).arg(col);
+                    allData[key] = item->text();
+                }
             }
         }
 
-        ui->statusbar->showMessage("Добавлен столбец " + QString(QChar('A' + currentCol + 1)));
-    } else {
-        int col = ui->tableWidget->columnCount();
-        ui->tableWidget->insertColumn(col);
-
-        if (col < 26) {
-            ui->tableWidget->setHorizontalHeaderItem(col, new QTableWidgetItem(QString(QChar('A' + col))));
-        } else {
-            QString header = QString(QChar('A' + (col / 26) - 1)) + QString(QChar('A' + (col % 26)));
-            ui->tableWidget->setHorizontalHeaderItem(col, new QTableWidgetItem(header));
+        // Сохраняем все формулы
+        if (del) {
+            allFormulas = del->m_formulas;
         }
 
-        ui->statusbar->showMessage("Добавлен столбец " + QString(QChar('A' + col)));
+        // Очищаем всю таблицу
+        ui->tableWidget->clearContents();
+
+        // Очищаем формулы
+        if (del) {
+            del->m_formulas.clear();
+        }
+
+        // Вставляем новую пустую колонку ПОСЛЕ текущей
+        ui->tableWidget->insertColumn(currentCol + 1);
+
+        // Восстанавливаем данные со сдвигом
+        for (auto it = allData.begin(); it != allData.end(); ++it) {
+            QString key = it.key();
+            QString value = it.value();
+
+            QStringList parts = key.split(':');
+            if (parts.size() == 2) {
+                int row = parts[0].toInt();
+                int oldCol = parts[1].toInt();
+
+                int newCol = oldCol;
+                // Если старая колонка была ПОСЛЕ позиции вставки, сдвигаем вправо
+                if (oldCol > currentCol) {
+                    newCol = oldCol + 1;
+                }
+
+                ui->tableWidget->setItem(row, newCol, new QTableWidgetItem(value));
+            }
+        }
+
+        // Восстанавливаем формулы со сдвигом ссылок
+        for (auto it = allFormulas.begin(); it != allFormulas.end(); ++it) {
+            QString key = it.key();
+            QString formula = it.value();
+
+            QStringList parts = key.split(':');
+            if (parts.size() == 2) {
+                int row = parts[0].toInt();
+                int oldCol = parts[1].toInt();
+
+                int newCol = oldCol;
+                if (oldCol > currentCol) {
+                    newCol = oldCol + 1;
+                }
+
+                // Обновляем ссылки в формуле (сдвиг колонок)
+                // Важно: передаем currentCol+1 как позицию вставки, чтобы формулы,
+                // ссылающиеся на колонки ПОСЛЕ вставки, обновились
+                QString updatedFormula = updateColumnReferences(formula, currentCol + 1, 1);
+
+                QString newKey = QString("%1:%2").arg(row).arg(newCol);
+                if (del) {
+                    del->m_formulas[newKey] = updatedFormula;
+                }
+            }
+        }
+
+    } else {
+        // Добавляем пустую колонку в конец
+        int newCol = ui->tableWidget->columnCount();
+        ui->tableWidget->insertColumn(newCol);
+        for (int row = 0; row < ui->tableWidget->rowCount(); ++row) {
+            ui->tableWidget->setItem(row, newCol, new QTableWidgetItem(""));
+        }
+    }
+
+    // Обновляем заголовки столбцов
+    for (int col = 0; col < ui->tableWidget->columnCount(); ++col) {
+        ui->tableWidget->setHorizontalHeaderItem(col,
+                                                 new QTableWidgetItem(getColumnLetter(col)));
+    }
+
+    // Обновляем все формулы
+    Delegate *del = qobject_cast<Delegate*>(ui->tableWidget->itemDelegate());
+    if (del) {
+        del->updateAllFormulas(ui->tableWidget->model());
     }
 }
 
@@ -169,7 +488,9 @@ void MainWindow::on_actionDeleteColumn_triggered()
         if (currentCol < 26) {
             colLetter = QString(QChar('A' + currentCol));
         } else {
-            colLetter = QString(QChar('A' + (currentCol / 26) - 1)) + QString(QChar('A' + (currentCol % 26)));
+            int first = (currentCol / 26) - 1;
+            int second = currentCol % 26;
+            colLetter = QString(QChar('A' + first)) + QString(QChar('A' + second));
         }
 
         QMessageBox::StandardButton reply = QMessageBox::question(
@@ -180,24 +501,173 @@ void MainWindow::on_actionDeleteColumn_triggered()
             );
 
         if (reply == QMessageBox::Yes) {
-            ui->tableWidget->removeColumn(currentCol);
+            // Сохраняем все данные и формулы
+            QMap<QString, QString> allData;
+            QMap<QString, QString> allFormulas;
 
-            for (int col = currentCol; col < ui->tableWidget->columnCount(); ++col) {
-                if (col < 26) {
-                    ui->tableWidget->setHorizontalHeaderItem(col, new QTableWidgetItem(QString(QChar('A' + col))));
-                } else {
-                    QString header = QString(QChar('A' + (col / 26) - 1)) + QString(QChar('A' + (col % 26)));
-                    ui->tableWidget->setHorizontalHeaderItem(col, new QTableWidgetItem(header));
+            Delegate *del = qobject_cast<Delegate*>(ui->tableWidget->itemDelegate());
+
+            // Сохраняем все данные таблицы
+            for (int row = 0; row < ui->tableWidget->rowCount(); ++row) {
+                for (int col = 0; col < ui->tableWidget->columnCount(); ++col) {
+                    if (col == currentCol) continue; // Пропускаем удаляемую колонку
+
+                    QTableWidgetItem* item = ui->tableWidget->item(row, col);
+                    if (item) {
+                        QString key = QString("%1:%2").arg(row).arg(col);
+                        allData[key] = item->text();
+                    }
                 }
             }
 
-            ui->statusbar->showMessage("Удален столбец " + colLetter);
+            // Сохраняем все формулы (кроме удаляемой колонки)
+            if (del) {
+                for (auto it = del->m_formulas.begin(); it != del->m_formulas.end(); ++it) {
+                    QString key = it.key();
+                    QStringList parts = key.split(':');
+                    if (parts.size() == 2) {
+                        int col = parts[1].toInt();
+                        if (col != currentCol) {
+                            allFormulas[key] = it.value();
+                        }
+                    }
+                }
+            }
+
+            // Очищаем таблицу
+            ui->tableWidget->clearContents();
+
+            // Очищаем формулы
+            if (del) {
+                del->m_formulas.clear();
+            }
+
+            // Удаляем колонку
+            ui->tableWidget->removeColumn(currentCol);
+
+            // Восстанавливаем данные со сдвигом влево
+            for (auto it = allData.begin(); it != allData.end(); ++it) {
+                QString key = it.key();
+                QString value = it.value();
+
+                QStringList parts = key.split(':');
+                if (parts.size() == 2) {
+                    int row = parts[0].toInt();
+                    int oldCol = parts[1].toInt();
+
+                    int newCol = oldCol;
+                    if (oldCol > currentCol) {
+                        newCol = oldCol - 1;
+                    }
+
+                    ui->tableWidget->setItem(row, newCol, new QTableWidgetItem(value));
+                }
+            }
+
+            // Восстанавливаем формулы со сдвигом ссылок
+            for (auto it = allFormulas.begin(); it != allFormulas.end(); ++it) {
+                QString key = it.key();
+                QString formula = it.value();
+
+                QStringList parts = key.split(':');
+                if (parts.size() == 2) {
+                    int row = parts[0].toInt();
+                    int oldCol = parts[1].toInt();
+
+                    int newCol = oldCol;
+                    if (oldCol > currentCol) {
+                        newCol = oldCol - 1;
+                    }
+
+                    // Обновляем ссылки в формуле (сдвиг колонок)
+                    QString updatedFormula = updateColumnReferences(formula, currentCol, -1);
+
+                    QString newKey = QString("%1:%2").arg(row).arg(newCol);
+                    if (del) {
+                        del->m_formulas[newKey] = updatedFormula;
+                    }
+                }
+            }
+
+            // Обновляем заголовки столбцов
+            for (int col = 0; col < ui->tableWidget->columnCount(); ++col) {
+                QString header;
+                if (col < 26) {
+                    header = QString(QChar('A' + col));
+                } else {
+                    int first = (col / 26) - 1;
+                    int second = col % 26;
+                    header = QString(QChar('A' + first)) + QString(QChar('A' + second));
+                }
+                ui->tableWidget->setHorizontalHeaderItem(col, new QTableWidgetItem(header));
+            }
+
+            // Обновляем все формулы
+            if (del) {
+                del->updateAllFormulas(ui->tableWidget->model());
+            }
         } else {
             ui->statusbar->showMessage("Удаление столбца отменено");
         }
     } else {
         QMessageBox::warning(this, "Ошибка", "Выберите столбец для удаления");
     }
+}
+
+// Функция для обновления ссылок на колонки в формуле
+// Функция для обновления ссылок на колонки в формуле
+QString MainWindow::updateColumnReferences(const QString &formula, int insertCol, int shift)
+{
+    QString result = formula;
+
+    // Регулярное выражение для поиска ссылок на ячейки (например, A1, B2, AA10)
+    QRegularExpression cellRegex("([A-Z]+)([0-9]+)");
+    QRegularExpressionMatchIterator it = cellRegex.globalMatch(formula);
+
+    QMap<QString, QString> replacements;
+
+    while (it.hasNext()) {
+        QRegularExpressionMatch match = it.next();
+        QString originalRef = match.captured(0);
+        QString colStr = match.captured(1);
+        QString rowStr = match.captured(2);
+
+        // Конвертируем буквы колонки в число (0-индексация)
+        int col = 0;
+        for (int i = 0; i < colStr.length(); ++i) {
+            col = col * 26 + (colStr[i].toLatin1() - 'A' + 1);
+        }
+        col--;
+
+        // Обновляем номер колонки если ссылка указывает на колонку
+        // НАЧИНАЯ С позиции вставки
+        if (col >= insertCol) {
+            int newCol = col + shift;
+            if (newCol >= 0) {
+                QString newColStr = getColumnLetter(newCol);
+                QString newRef = newColStr + rowStr;
+                replacements[originalRef] = newRef;
+            }
+        }
+    }
+
+    // Выполняем замены
+    for (auto it = replacements.begin(); it != replacements.end(); ++it) {
+        result.replace(it.key(), it.value());
+    }
+
+    return result;
+}
+
+QString MainWindow::getColumnLetter(int col) const
+{
+    QString result;
+    int tempCol = col;
+    do {
+        result = QString(QChar('A' + (tempCol % 26))) + result;
+        tempCol = tempCol / 26 - 1;
+    } while (tempCol >= 0);
+    return result;
 }
 
 void MainWindow::on_actionClearTable_triggered()
@@ -217,6 +687,70 @@ void MainWindow::on_actionClearTable_triggered()
     }
 }
 
+void MainWindow::on_actionFormulaHelp_triggered()
+{
+    // Создаем диалог с прокруткой
+    QDialog *helpDialog = new QDialog(this);
+    helpDialog->setWindowTitle("Справка по формулам");
+    helpDialog->setMinimumSize(500, 400);
+    helpDialog->resize(600, 500);
+
+    // Создаем область прокрутки
+    QScrollArea *scrollArea = new QScrollArea(helpDialog);
+    scrollArea->setWidgetResizable(true);
+
+    // Создаем виджет с содержимым
+    QWidget *contentWidget = new QWidget();
+    QVBoxLayout *contentLayout = new QVBoxLayout(contentWidget);
+
+    // Текст справки (простой текст, без HTML)
+    QLabel *helpLabel = new QLabel();
+    helpLabel->setTextFormat(Qt::PlainText);
+    helpLabel->setWordWrap(true);
+
+    QString helpText =
+        "ДОСТУПНЫЕ ФОРМУЛЫ\n"
+        "================\n\n"
+
+        "ОСНОВНЫЕ ОПЕРАЦИИ:\n"
+        "------------------\n"
+        "=A1+B2        - Сложение\n"
+        "=A1-B2        - Вычитание\n"
+        "=A1*B2        - Умножение\n"
+        "=A1/B2        - Деление\n"
+        "=A1+B2*C3     - Сложные выражения\n"
+        "=10+20        - Прямые вычисления\n\n"
+
+        "ФУНКЦИИ ДИАПАЗОНОВ:\n"
+        "------------------\n"
+        "=SUM(A1:A10)       - Сумма чисел в диапазоне\n"
+        "=AVERAGE(B1:B20)   - Среднее арифметическое\n"
+        "=MEDIAN(C1:C15)    - Медиана чисел\n\n"
+
+        "ФУНКЦИИ С ОДНОЙ ЯЧЕЙКОЙ:\n"
+        "-----------------------\n"
+        "=TOLOWER(A1)       - Перевод текста в нижний регистр\n"
+        "=TOUPPER(B2)       - Перевод текста в ВЕРХНИЙ регистр\n\n";
+
+    helpLabel->setText(helpText);
+
+    // Добавляем метку в layout
+    contentLayout->addWidget(helpLabel);
+
+    // Устанавливаем содержимое в область прокрутки
+    scrollArea->setWidget(contentWidget);
+
+    // Главный layout для диалога
+    QVBoxLayout *mainLayout = new QVBoxLayout(helpDialog);
+    mainLayout->addWidget(scrollArea);
+
+    // Показываем диалог
+    helpDialog->exec();
+
+    // Очищаем память
+    delete helpDialog;
+}
+
 void MainWindow::clearTable()
 {
     ui->tableWidget->clearContents();
@@ -224,7 +758,6 @@ void MainWindow::clearTable()
 
 void MainWindow::loadCSV(const QString& filename)
 {
-    qDebug() << "Loading CSV:" << filename;
     QFile file(filename);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QMessageBox::warning(this, "Ошибка", "Не удалось открыть файл");
@@ -248,12 +781,10 @@ void MainWindow::loadCSV(const QString& filename)
 
     file.close();
     ui->statusbar->showMessage("Загружен файл: " + QFileInfo(filename).fileName());
-    qDebug() << "CSV loaded successfully";
 }
 
 void MainWindow::loadJSON(const QString& filename)
 {
-    qDebug() << "Loading JSON:" << filename;
     QFile file(filename);
     if (!file.open(QIODevice::ReadOnly)) {
         QMessageBox::warning(this, "Ошибка", "Не удалось открыть файл");
@@ -291,12 +822,10 @@ void MainWindow::loadJSON(const QString& filename)
         }
     }
     ui->statusbar->showMessage("Загружен файл: " + QFileInfo(filename).fileName());
-    qDebug() << "JSON loaded successfully";
 }
 
 void MainWindow::saveCSV(const QString& filename)
 {
-    qDebug() << "Saving CSV:" << filename;
     QFile file(filename);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         QMessageBox::warning(this, "Ошибка", "Не удалось сохранить файл");
@@ -315,13 +844,10 @@ void MainWindow::saveCSV(const QString& filename)
     }
 
     file.close();
-    ui->statusbar->showMessage("Сохранен файл: " + QFileInfo(filename).fileName());
-    qDebug() << "CSV saved successfully";
 }
 
 void MainWindow::saveJSON(const QString& filename)
 {
-    qDebug() << "Saving JSON:" << filename;
     QFile file(filename);
     if (!file.open(QIODevice::WriteOnly)) {
         QMessageBox::warning(this, "Ошибка", "Не удалось сохранить файл");
@@ -342,6 +868,4 @@ void MainWindow::saveJSON(const QString& filename)
     QJsonDocument doc(jsonArray);
     file.write(doc.toJson());
     file.close();
-    ui->statusbar->showMessage("Сохранен файл: " + QFileInfo(filename).fileName());
-    qDebug() << "JSON saved successfully";
 }

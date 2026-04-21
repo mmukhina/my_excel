@@ -27,6 +27,7 @@ private slots:
     void on_actionAddColumn_triggered();
     void on_actionDeleteColumn_triggered();
     void on_actionClearTable_triggered();
+    void on_actionFormulaHelp_triggered();
 
 private:
     Ui::MainWindow *ui;
@@ -36,6 +37,9 @@ private:
     void saveCSV(const QString& filename);
     void saveJSON(const QString& filename);
     void clearTable();
+    QString updateFormulaReferences(const QString &formula, int insertRow, int shift);
+    QString updateColumnReferences(const QString &formula, int insertCol, int shift);
+    QString getColumnLetter(int col) const;
 };
 
 #endif

@@ -137,21 +137,57 @@ bool Delegate::hasFormula(const QModelIndex &index) const
 
 QString Delegate::evaluateFormula(const QString &formula, const QAbstractItemModel *model, const QModelIndex &currentIndex) const
 {
+    Q_UNUSED(currentIndex)
+
     QString expr = formula.trimmed().toUpper();
 
     // Проверка на функции с диапазоном
-    QRegularExpression funcRegex("^(SUM|AVERAGE|MEDIAN|TOLOWER|TOUPPER)\\(([A-Z]+[0-9]+:[A-Z]+[0-9]+)\\)$");
+    QRegularExpression funcRegex("^(SUM|AVERAGE|MEDIAN)\\(([A-Z]+[0-9]+:[A-Z]+[0-9]+)\\)$");
     QRegularExpressionMatch match = funcRegex.match(expr);
 
     if (match.hasMatch()) {
         QString func = match.captured(1);
         QString range = match.captured(2);
 
-        if (func == "SUM") return QString::number(sumRange(range, model, currentIndex));
-        if (func == "AVERAGE") return QString::number(averageRange(range, model, currentIndex));
-        if (func == "MEDIAN") return QString::number(medianRange(range, model, currentIndex));
-        if (func == "TOLOWER") return toLowerRange(range, model, currentIndex);
-        if (func == "TOUPPER") return toUpperRange(range, model, currentIndex);
+        if (func == "SUM") return QString::number(sumRange(range, model));
+        if (func == "AVERAGE") return QString::number(averageRange(range, model));
+        if (func == "MEDIAN") return QString::number(medianRange(range, model));
+    }
+
+    // Проверка на функции с одной ячейкой TOLOWER и TOUPPER
+    QRegularExpression singleFuncRegex("^(TOLOWER|TOUPPER)\\(([A-Z]+[0-9]+)\\)$");
+    QRegularExpressionMatch singleMatch = singleFuncRegex.match(expr);
+
+    if (singleMatch.hasMatch()) {
+        QString func = singleMatch.captured(1);
+        QString cell = singleMatch.captured(2);
+
+        // Получаем значение из одной ячейки
+        QRegularExpression cellRegex("([A-Z]+)([0-9]+)");
+        QRegularExpressionMatch cellMatch = cellRegex.match(cell);
+
+        if (cellMatch.hasMatch()) {
+            QString colStr = cellMatch.captured(1);
+            QString rowStr = cellMatch.captured(2);
+
+            // Конвертируем букву столбца в число
+            int col = 0;
+            for (int i = 0; i < colStr.length(); ++i) {
+                col = col * 26 + (colStr[i].toLatin1() - 'A' + 1);
+            }
+            col--;
+            int row = rowStr.toInt() - 1;
+
+            QVariant value = getCellValue(row, col, model);
+
+            if (func == "TOLOWER") {
+                return value.toString().toLower();
+            }
+            if (func == "TOUPPER") {
+                return value.toString().toUpper();
+            }
+        }
+        return "ERROR";
     }
 
     // Замена ссылок на ячейки их значениями
@@ -211,7 +247,7 @@ QString Delegate::evaluateFormula(const QString &formula, const QAbstractItemMod
     return result.toString();
 }
 
-double Delegate::sumRange(const QString &range, const QAbstractItemModel *model, const QModelIndex &currentIndex) const
+double Delegate::sumRange(const QString &range, const QAbstractItemModel *model) const
 {
     QStringList values = getRangeValues(range, model);
     double sum = 0;
@@ -221,7 +257,7 @@ double Delegate::sumRange(const QString &range, const QAbstractItemModel *model,
     return sum;
 }
 
-double Delegate::averageRange(const QString &range, const QAbstractItemModel *model, const QModelIndex &currentIndex) const
+double Delegate::averageRange(const QString &range, const QAbstractItemModel *model) const
 {
     QStringList values = getRangeValues(range, model);
     double sum = 0;
@@ -235,7 +271,7 @@ double Delegate::averageRange(const QString &range, const QAbstractItemModel *mo
     return count > 0 ? sum / count : 0;
 }
 
-double Delegate::medianRange(const QString &range, const QAbstractItemModel *model, const QModelIndex &currentIndex) const
+double Delegate::medianRange(const QString &range, const QAbstractItemModel *model) const
 {
     QStringList values = getRangeValues(range, model);
     QVector<double> nums;
@@ -250,26 +286,6 @@ double Delegate::medianRange(const QString &range, const QAbstractItemModel *mod
     } else {
         return nums[size/2];
     }
-}
-
-QString Delegate::toLowerRange(const QString &range, const QAbstractItemModel *model, const QModelIndex &currentIndex) const
-{
-    QStringList values = getRangeValues(range, model);
-    QStringList result;
-    for (const QString &v : values) {
-        result.append(v.toLower());
-    }
-    return result.join(" ");
-}
-
-QString Delegate::toUpperRange(const QString &range, const QAbstractItemModel *model, const QModelIndex &currentIndex) const
-{
-    QStringList values = getRangeValues(range, model);
-    QStringList result;
-    for (const QString &v : values) {
-        result.append(v.toUpper());
-    }
-    return result.join(" ");
 }
 
 QStringList Delegate::getRangeValues(const QString &range, const QAbstractItemModel *model) const

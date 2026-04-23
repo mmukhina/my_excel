@@ -111,6 +111,9 @@ make ./myExcel
 <img width="49%" alt="image" src="https://github.com/user-attachments/assets/e4152ab3-a907-4654-8022-283c1cfe7432" />
 <img width="49%" alt="image" src="https://github.com/user-attachments/assets/a45c7954-b733-4eea-80e5-0e3a7b430608" />
 <img width="49%" alt="image" src="https://github.com/user-attachments/assets/73bfe054-7bde-42e9-bcc0-11290fd4079d" />
-
+<br><br>
+Неправильно введенная формула<br>
+<img width="49%" alt="image" src="https://github.com/user-attachments/assets/75033608-4b80-4616-baa1-44ed4a60a0ac" />
+<img width="49%" alt="image" src="https://github.com/user-attachments/assets/cfd4c769-90cc-4e3c-9067-78145fe8ba27" />
 
 
